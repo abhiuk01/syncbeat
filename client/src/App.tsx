@@ -1,6 +1,6 @@
 
 import React,{useEffect,useRef,useState}from"react";
-import{socket}from"./socket";
+import{socket,serverUrl}from"./socket";
 import{extractYouTubeId,thumb}from"./youtube";
 import type{RoomState,ChatMessage,Song}from"./types";
 import{Music2,Sun,Moon,LogIn,Plus,Play,Pause,SkipForward,Volume2,VolumeX,Maximize2,MessageCircle,Users,Mic,MicOff,Headphones,Copy,Check,Crown,UserMinus,LogOut,Send,Smile,X,Radio,Wifi,Loader2}from"lucide-react";
@@ -139,7 +139,7 @@ function Voice({low,setLow}:{low:boolean;setLow:any}){
  const[joined,setJoined]=useState(false),[muted,setMuted]=useState(false),[deaf,setDeaf]=useState(false),[error,setError]=useState("");
  const local=useRef<MediaStream|null>(null),peers=useRef<Record<string,RTCPeerConnection>>({}),audios=useRef<Record<string,HTMLAudioElement>>({});
  const cfg=useRef<RTCConfiguration>({iceServers:[{urls:"stun:stun.l.google.com:19302"},{urls:"stun:stun1.l.google.com:19302"}]});
- useEffect(()=>{const base=import.meta.env.VITE_SERVER_URL||location.origin;fetch(base+"/config").then(r=>r.json()).then(x=>{if(x.stunUrls?.length)cfg.current={iceServers:x.stunUrls.map((u:string)=>({urls:u}))}}).catch(()=>{});
+ useEffect(()=>{const base=serverUrl;fetch(base+"/config").then(r=>r.json()).then(x=>{if(x.stunUrls?.length)cfg.current={iceServers:x.stunUrls.map((u:string)=>({urls:u}))}}).catch(()=>{});
   const signal=async({peerId,data}:any)=>{if(!local.current)return;let pc=peers.current[peerId];if(!pc)pc=make(peerId);if(data?.type==="offer"){await pc.setRemoteDescription(data);const a=await pc.createAnswer();await pc.setLocalDescription(a);socket.emit("voice:signal",{peerId,data:pc.localDescription})}else if(data?.type==="answer")await pc.setRemoteDescription(data);else if(data?.candidate)await pc.addIceCandidate(data.candidate)};
   const joinedPeer=async({peerId}:any)=>{if(!local.current)return;const pc=make(peerId);const o=await pc.createOffer();await pc.setLocalDescription(o);socket.emit("voice:signal",{peerId,data:pc.localDescription})};
   const leftPeer=({peerId}:any)=>{peers.current[peerId]?.close();delete peers.current[peerId];audios.current[peerId]?.remove();delete audios.current[peerId]};
