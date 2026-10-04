@@ -273,6 +273,7 @@ io.on("connection", (socket) => {
     const type = typeof value.type === "string" ? value.type : "";
 
     if (type === "play") {
+      if (!room.current) return;
       setPlayback(room, true, typeof value.position === "number" ? value.position : undefined);
     } else if (type === "pause") {
       setPlayback(room, false, typeof value.position === "number" ? value.position : undefined);
@@ -319,10 +320,19 @@ io.on("connection", (socket) => {
     const parsed = songSchema.safeParse(raw);
     if (!parsed.success) return;
     const participant = room.participants.get(socket.id);
-    room.queue.push({
+    const song = {
       ...parsed.data,
       addedBy: participant?.name || socket.data.name || "Guest"
-    });
+    };
+    if (!room.current) {
+      room.current = song;
+      room.position = 0;
+      room.isPlaying = false;
+      room.updatedAt = Date.now();
+      systemMessage(room, "Ready to play: " + song.title);
+    } else {
+      room.queue.push(song);
+    }
     emitState(room);
   });
 
