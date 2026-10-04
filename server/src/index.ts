@@ -284,7 +284,7 @@ io.on("connection", (socket) => {
       if (!songResult.success) return;
       room.current = songResult.data;
       room.position = 0;
-      room.isPlaying = false;
+      room.isPlaying = value.autoplay === true;
       room.updatedAt = Date.now();
 
       if (value.removeFromQueue === true && Number.isInteger(value.index)) {
