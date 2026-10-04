@@ -1,0 +1,1 @@
+{"name":"syncbeat-server","private":true,"type":"module","scripts":{"dev":"tsx src/index.ts","start":"tsx src/index.ts"},"dependencies":{"express":"^4.21.2","socket.io":"^4.8.1","zod":"^3.24.1"},"devDependencies":{"@types/node":"^22.10.0","tsx":"^4.19.2","typescript":"^5.7.2"}}
