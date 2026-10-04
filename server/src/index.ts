@@ -318,7 +318,11 @@ io.on("connection", (socket) => {
     if (!room || !rateLimit(socket.id, 40)) return;
     const parsed = songSchema.safeParse(raw);
     if (!parsed.success) return;
-    room.queue.push(parsed.data);
+    const participant = room.participants.get(socket.id);
+    room.queue.push({
+      ...parsed.data,
+      addedBy: participant?.name || socket.data.name || "Guest"
+    });
     emitState(room);
   });
 
