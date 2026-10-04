@@ -1,1 +1,15 @@
-{"name":"syncbeat","private":true,"scripts":{"dev":"concurrently \"npm run dev:client\" \"npm run dev:server\"","dev:client":"vite --config client/vite.config.ts","dev:server":"tsx server/src/index.ts","build":"npm run build:client","build:client":"vite build --config client/vite.config.ts","server":"tsx server/src/index.ts","preview":"vite preview --config client/vite.config.ts"},"devDependencies":{"@types/node":"^22.10.0","@vitejs/plugin-react":"^4.3.4","autoprefixer":"^10.4.20","concurrently":"^9.1.2","postcss":"^8.4.49","tailwindcss":"^3.4.17","tsx":"^4.19.2","typescript":"^5.7.2","vite":"^6.0.7"},"dependencies":{"express":"^4.21.2","lucide-react":"^0.468.0","react":"^18.3.1","react-dom":"^18.3.1","socket.io":"^4.8.1","socket.io-client":"^4.8.1","zod":"^3.24.1"},"engines":{"node":">=20"}}
+{
+  "name":"syncbeat","private":true,
+  "scripts":{
+    "dev":"concurrently \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:client":"vite --config client/vite.config.ts",
+    "dev:server":"tsx server/src/index.ts",
+    "build":"npm run build:client",
+    "build:client":"tailwindcss -c client/tailwind.config.cjs -i client/src/styles.css -o client/src/generated.css --minify && vite build --config client/vite.config.ts",
+    "server":"tsx server/src/index.ts",
+    "preview":"vite preview --config client/vite.config.ts"
+  },
+  "dependencies":{"express":"^4.21.2","lucide-react":"^0.468.0","react":"^18.3.1","react-dom":"^18.3.1","socket.io":"^4.8.1","socket.io-client":"^4.8.1","zod":"^3.24.1"},
+  "devDependencies":{"@types/node":"^22.10.0","@vitejs/plugin-react":"^4.3.4","autoprefixer":"^10.4.20","concurrently":"^9.1.2","postcss":"^8.4.49","tailwindcss":"^3.4.17","tsx":"^4.19.2","typescript":"^5.7.2","vite":"^6.0.7"},
+  "engines":{"node":">=20"}
+}
