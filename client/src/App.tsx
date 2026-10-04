@@ -98,7 +98,7 @@ function Solo({name,theme,setTheme,onBack}:{name:string;theme:"dark"|"light";set
  return <div className="min-h-screen gradient-bg"><div className="noise"/><header className="sticky top-0 z-20 border-b border-white/[.06] bg-[#07080c]/80 backdrop-blur-xl"><div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3"><button onClick={onBack}><Logo/></button><div className="flex items-center gap-2"><span className="hidden text-xs text-white/35 sm:block">Listening solo • {name}</span><button onClick={()=>setTheme(theme==="dark"?"light":"dark")} className="rounded-lg border border-white/10 p-2">{theme==="dark"?<Sun size={16}/>:<Moon size={16}/>}</button></div></div></header>
   <main className="mx-auto max-w-5xl p-4 sm:p-6"><div className="mb-5"><button onClick={onBack} className="text-xs text-white/35 hover:text-white/60">← Listening modes</button><h1 className="mt-3 text-3xl font-extrabold">Listen solo</h1><p className="mt-1 text-sm text-white/35">Paste a YouTube link. SyncBeat uses the official YouTube player.</p></div>
    <div className="glass rounded-2xl p-3 sm:p-4"><div className="flex flex-col gap-2 sm:flex-row"><input value={url} onChange={e=>setUrl(e.target.value)} onKeyDown={e=>e.key==="Enter"&&load()} placeholder="https://youtube.com/watch?v=..." className="input flex-1"/><button onClick={load} className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black">Load video</button></div>{error&&<div className="mt-3 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-xs text-red-200">{error}</div>}</div>
-   <div className="glass mt-4 overflow-hidden rounded-2xl"><div className="relative"><div ref={mount} className="yt-frame"/>{!videoId&&<div className="absolute inset-0 grid place-items-center bg-[#090a0f]/70 p-6 text-center"><div><div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white/[.05] text-white/50"><Music2/></div><p className="mt-3 text-sm text-white/50">Your video will appear here.</p></div></div>}{videoId&&!ready&&!error&&<div className="absolute inset-0 grid place-items-center bg-[#090a0f]/70"><Loader2 className="animate-spin text-white/50"/></div>}</div>
+   <div className="glass mt-4 overflow-hidden rounded-2xl"><div className="relative"><div ref={mount} className="yt-frame pointer-events-none"/>{!videoId&&<div className="absolute inset-0 grid place-items-center bg-[#090a0f]/70 p-6 text-center"><div><div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white/[.05] text-white/50"><Music2/></div><p className="mt-3 text-sm text-white/50">Your video will appear here.</p></div></div>}{videoId&&!ready&&!error&&<div className="absolute inset-0 grid place-items-center bg-[#090a0f]/70"><Loader2 className="animate-spin text-white/50"/></div>}</div>
     <div className="p-4"><div className="flex items-center justify-between"><div className="text-xs text-white/35">{playing?"Playing":"Paused"}{videoId?" • "+videoId:""}</div><button disabled={!ready} onClick={()=>{if(playing)yt.current?.pauseVideo?.();else yt.current?.playVideo?.()}} className="grid h-10 w-10 place-items-center rounded-full bg-white text-black disabled:opacity-30">{playing?<Pause size={17}/>:<Play size={17} fill="currentColor"/>}</button></div><input disabled={!ready} type="range" min="0" max={dur||1} value={Math.min(pos,dur||1)} onChange={e=>{const v=Number(e.target.value);setPos(v);yt.current?.seekTo?.(v,true)}} className="range mt-3 w-full"/><div className="flex justify-between text-[11px] text-white/30"><span>{fmt(pos)}</span><span>{fmt(dur)}</span></div><div className="mt-3 flex items-center gap-3"><button onClick={()=>{const v=vol?0:70;setVol(v);yt.current?.setVolume?.(v)}}>{vol?<Volume2 size={17}/>:<VolumeX size={17}/>}</button><input aria-label="Volume" type="range" min="0" max="100" value={vol} onChange={e=>{const v=Number(e.target.value);setVol(v);yt.current?.setVolume?.(v)}} className="range w-28"/><button onClick={()=>yt.current?.getIframe?.()?.requestFullscreen?.()} className="ml-auto"><Maximize2 size={16}/></button></div></div>
    </div>
   </main></div>
@@ -241,7 +241,7 @@ function Player({room,control,low}:{room:RoomState;control:boolean;low:boolean})
   const init=()=>{
    if(!mount.current||!room.current)return;
    yt.current?.destroy?.();
-   yt.current=new window.YT.Player(mount.current,{videoId:room.current.id,playerVars:{playsinline:1,controls:1,rel:0,modestbranding:1},events:{
+   yt.current=new window.YT.Player(mount.current,{videoId:room.current.id,playerVars:{playsinline:1,controls:0,rel:0,modestbranding:1,disablekb:1},events:{
     onReady:(e:any)=>{setReady(true);setDur(e.target.getDuration()||0);e.target.setVolume(vol);e.target.seekTo(room.position,true);if(room.isPlaying)e.target.playVideo?.()},
     onStateChange:(e:any)=>{if(e.data===0&&control)socket.emit("player:action",{type:"ended"});if(e.data===-1)setErr("YouTube could not play this video here. Choose another video.")}
    }});
@@ -318,65 +318,152 @@ function People({room,host}:{room:RoomState;host:boolean}){
  })}</div>
 }
 
+
 function Voice({low,setLow}:{low:boolean;setLow:any}){
- const[joined,setJoined]=useState(false),[muted,setMuted]=useState(false),[deaf,setDeaf]=useState(false),[error,setError]=useState(""),[ptt,setPtt]=useState(false),[speaking,setSpeaking]=useState(false),[volumes,setVolumes]=useState<Record<string,number>>({});
+ const[joined,setJoined]=useState(false),[muted,setMuted]=useState(false),[deaf,setDeaf]=useState(false),[error,setError]=useState(""),[ptt,setPtt]=useState(false),[speaking,setSpeaking]=useState(false),[peerIds,setPeerIds]=useState<string[]>([]),[volumes,setVolumes]=useState<Record<string,number>>({});
  const local=useRef<MediaStream|null>(null),peers=useRef<Record<string,RTCPeerConnection>>({}),audios=useRef<Record<string,HTMLAudioElement>>({});
  const cfg=useRef<RTCConfiguration>({iceServers:[{urls:"stun:stun.l.google.com:19302"},{urls:"stun:stun1.l.google.com:19302"}]});
+ const deafRef=useRef(deaf),volRef=useRef(volumes),pttRef=useRef(ptt),speakingRef=useRef(speaking),mutedRef=useRef(muted);
+ useEffect(()=>{deafRef.current=deaf;Object.values(audios.current).forEach(a=>a.muted=deaf)},[deaf]);
+ useEffect(()=>{volRef.current=volumes;Object.entries(audios.current).forEach(([id,a])=>a.volume=(volumes[id]??100)/100)},[volumes]);
+ useEffect(()=>{pttRef.current=ptt;speakingRef.current=speaking;mutedRef.current=muted;local.current?.getAudioTracks().forEach(t=>t.enabled=ptt?(!muted&&speaking):!muted)},[ptt,speaking,muted]);
 
  useEffect(()=>{
-  const base=serverUrl;
-  fetch(base+"/config").then(r=>r.json()).then(x=>{if(Array.isArray(x.stunUrls)&&x.stunUrls.length)cfg.current={iceServers:x.stunUrls.map((u:string)=>({urls:u}))}}).catch(()=>{});
-  const signal=async({peerId,data}:any)=>{
-   if(!local.current)return;
-   let pc=peers.current[peerId];
-   if(!pc)pc=makePeer(peerId);
-   try{
-    if(data?.type==="offer"){await pc.setRemoteDescription(data);const ans=await pc.createAnswer();await pc.setLocalDescription(ans);socket.emit("voice:signal",{peerId,data:pc.localDescription})}
-    else if(data?.type==="answer"){await pc.setRemoteDescription(data)}
-    else if(data?.candidate){await pc.addIceCandidate(data.candidate)}
-   }catch{}
-  };
-  const peersList=async({peerIds}:any)=>{for(const id of (Array.isArray(peerIds)?peerIds:[])){const pc=makePeer(id);try{const offer=await pc.createOffer();await pc.setLocalDescription(offer);socket.emit("voice:signal",{peerId:id,data:pc.localDescription})}catch{}}};
-  const left=({peerId}:any)=>{peers.current[peerId]?.close();delete peers.current[peerId];audios.current[peerId]?.remove();delete audios.current[peerId]};
+  fetch(serverUrl+"/config").then(r=>r.json()).then(x=>{if(Array.isArray(x.stunUrls)&&x.stunUrls.length)cfg.current={iceServers:x.stunUrls.map((u:string)=>({urls:u}))}}).catch(()=>{});
+
   const makePeer=(peerId:string)=>{
    if(peers.current[peerId])return peers.current[peerId];
    const pc=new RTCPeerConnection(cfg.current);
-   local.current?.getTracks().forEach(t=>pc.addTrack(t,local.current!));
+   local.current?.getTracks().forEach(track=>pc.addTrack(track,local.current!));
    pc.onicecandidate=e=>{if(e.candidate)socket.emit("voice:signal",{peerId,data:{candidate:e.candidate}})};
-   pc.ontrack=e=>{let audio=audios.current[peerId];if(!audio){audio=new Audio();audio.autoplay=true;audio.playsInline=true;audios.current[peerId]=audio}audio.srcObject=e.streams[0];audio.volume=(volumes[peerId]??100)/100;audio.muted=deaf};
+   pc.onconnectionstatechange=()=>{if(["failed","closed","disconnected"].includes(pc.connectionState)){pc.close();delete peers.current[peerId];audios.current[peerId]?.remove();delete audios.current[peerId];setPeerIds(ids=>ids.filter(id=>id!==peerId))}};
+   pc.ontrack=e=>{
+    let audio=audios.current[peerId];
+    if(!audio){audio=new Audio();audio.autoplay=true;audio.playsInline=true;audios.current[peerId]=audio}
+    audio.srcObject=e.streams[0];
+    audio.muted=deafRef.current;
+    audio.volume=(volRef.current[peerId]??100)/100;
+    audio.play().catch(()=>{});
+    setPeerIds(ids=>ids.includes(peerId)?ids:[...ids,peerId]);
+   };
    peers.current[peerId]=pc;
    return pc;
   };
-  socket.on("voice:signal",signal);socket.on("voice:peers",peersList);socket.on("voice:peer-left",left);
-  return()=>{socket.off("voice:signal",signal);socket.off("voice:peers",peersList);socket.off("voice:peer-left",left);Object.values(peers.current).forEach(p=>p.close())};
- },[deaf,volumes]);
 
- const setTrackMuted=(value:boolean)=>{local.current?.getAudioTracks().forEach(t=>{t.enabled=!value})};
+  const onSignal=async({peerId,data}:any)=>{
+   if(!local.current||!peerId)return;
+   const pc=makePeer(peerId);
+   try{
+    if(data?.type==="offer"){
+      await pc.setRemoteDescription(data);
+      const answer=await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.emit("voice:signal",{peerId,data:pc.localDescription});
+    }else if(data?.type==="answer"){
+      await pc.setRemoteDescription(data);
+    }else if(data?.candidate){
+      await pc.addIceCandidate(data.candidate);
+    }
+   }catch{}
+  };
+
+  const onPeers=async({peerIds:ids}:any)=>{
+   if(!local.current||!Array.isArray(ids))return;
+   for(const id of ids){
+    const pc=makePeer(id);
+    try{
+      const offer=await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.emit("voice:signal",{peerId:id,data:pc.localDescription});
+    }catch{}
+   }
+  };
+
+  const onLeft=({peerId}:any)=>{
+   peers.current[peerId]?.close();
+   delete peers.current[peerId];
+   audios.current[peerId]?.remove();
+   delete audios.current[peerId];
+   setPeerIds(ids=>ids.filter(id=>id!==peerId));
+  };
+
+  socket.on("voice:signal",onSignal);
+  socket.on("voice:peers",onPeers);
+  socket.on("voice:peer-left",onLeft);
+  return()=>{
+   socket.off("voice:signal",onSignal);
+   socket.off("voice:peers",onPeers);
+   socket.off("voice:peer-left",onLeft);
+   Object.values(peers.current).forEach(pc=>pc.close());
+   peers.current={};
+   Object.values(audios.current).forEach(a=>a.remove());
+   audios.current={};
+  };
+ },[]);
+
+ const setTrackState=(enabled:boolean)=>local.current?.getAudioTracks().forEach(track=>track.enabled=enabled);
+
  const join=async()=>{
   setError("");
-  if(!navigator.mediaDevices?.getUserMedia){setError("Your browser does not support microphone access.");return}
-  try{local.current=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});setTrackMuted(ptt);socket.emit("voice:join");setJoined(true)}
-  catch(e:any){setError(e?.name==="NotAllowedError"?"Microphone permission was denied. Allow the mic and try again.":"Could not access your microphone. Check browser permissions.")}
+  if(!navigator.mediaDevices?.getUserMedia){setError("This browser does not support microphone access.");return}
+  try{
+   local.current=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+   setTrackState(!muted&&!ptt);
+   socket.emit("voice:join");
+   setJoined(true);
+  }catch(e:any){
+   setError(e?.name==="NotAllowedError"?"Microphone permission was denied. Allow microphone access and try again.":"Could not access your microphone. Check browser permissions.");
+  }
  };
- const leave=()=>{local.current?.getTracks().forEach(t=>t.stop());local.current=null;Object.values(peers.current).forEach(p=>p.close());peers.current={};for(const a of Object.values(audios.current))a.remove();audios.current={};socket.emit("voice:leave");setJoined(false);setSpeaking(false)};
- const toggleMute=()=>{if(!local.current)return;const next=!muted;setMuted(next);if(!ptt)setTrackMuted(next);socket.emit("voice:mute",next)};
- useEffect(()=>{if(!local.current)return;if(ptt){setTrackMuted(!speaking||muted)}else{setTrackMuted(muted)}},[ptt,speaking,muted]);
+
+ const leave=()=>{
+  local.current?.getTracks().forEach(t=>t.stop());
+  local.current=null;
+  Object.values(peers.current).forEach(pc=>pc.close());
+  peers.current={};
+  Object.values(audios.current).forEach(a=>a.remove());
+  audios.current={};
+  setPeerIds([]);
+  socket.emit("voice:leave");
+  setJoined(false);
+  setSpeaking(false);
+ };
+
+ const toggleMute=()=>{
+  if(!local.current)return;
+  const next=!muted;
+  setMuted(next);
+  if(!ptt)setTrackState(!next);
+  socket.emit("voice:mute",next);
+ };
+
  useEffect(()=>{
-  const down=(e:KeyboardEvent)=>{if(!ptt||!joined||muted)return;if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)return;if(e.key.toLowerCase()==="v"){e.preventDefault();setSpeaking(true)}};
+  const down=(e:KeyboardEvent)=>{
+   if(!ptt||!joined||muted)return;
+   if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)return;
+   if(e.key.toLowerCase()==="v"){e.preventDefault();setSpeaking(true)}
+  };
   const up=(e:KeyboardEvent)=>{if(e.key.toLowerCase()==="v")setSpeaking(false)};
-  window.addEventListener("keydown",down);window.addEventListener("keyup",up);return()=>{window.removeEventListener("keydown",down);window.removeEventListener("keyup",up)}
+  window.addEventListener("keydown",down);window.addEventListener("keyup",up);
+  return()=>{window.removeEventListener("keydown",down);window.removeEventListener("keyup",up)};
  },[ptt,joined,muted]);
- useEffect(()=>{Object.entries(audios.current).forEach(([id,a])=>{a.muted=deaf;a.volume=(volumes[id]??100)/100})},[deaf,volumes]);
 
  return <section className="glass rounded-2xl p-4">
   <div className="flex items-center justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-cyan-300/60">Live voice</p><h2 className="mt-1 text-base font-bold">Talk together</h2></div><span className={"rounded-full border px-2.5 py-1 text-[9px] font-semibold "+(joined?"border-emerald-400/20 text-emerald-300":"border-white/10 text-white/30")}>{joined?"ON":"OFF"}</span></div>
-  <div className="mt-4 rounded-xl border border-white/[.06] bg-white/[.02] p-3"><p className="text-[10px] text-white/35">WebRTC peer audio • public STUN for development</p><div className="mt-3 flex items-center gap-2"><button onClick={joined?leave:join} className="flex-1 rounded-xl bg-violet-500 px-3 py-2.5 text-xs font-bold">{joined?"Leave voice":"Join voice"}</button><button disabled={!joined} onClick={toggleMute} className={"rounded-xl border border-white/10 p-2.5 disabled:opacity-25 "+(muted?"bg-red-400/10 text-red-200":"")} title="Mute microphone">{muted?<MicOff size={15}/>:<Mic size={15}/>}</button><button disabled={!joined} onClick={()=>setDeaf(v=>!v)} className={"rounded-xl border border-white/10 p-2.5 disabled:opacity-25 "+(deaf?"bg-red-400/10":"")} title="Deafen"><Headphones size={15}/></button></div>
-   <div className="mt-3 grid grid-cols-2 gap-2"><button disabled={!joined} onClick={()=>setPtt(v=>!v)} className={"rounded-lg border border-white/10 px-2.5 py-2 text-[10px] disabled:opacity-25 "+(ptt?"bg-cyan-400/10 text-cyan-200":"")}>{ptt?"Push-to-talk: V":"Normal mic"}</button><label className="flex items-center gap-2 rounded-lg border border-white/10 px-2.5 py-2 text-[10px] text-white/35"><input type="checkbox" checked={low} onChange={e=>setLow(e.target.checked)}/>Low bandwidth</label></div>
+  <div className="mt-4 rounded-xl border border-white/[.06] bg-white/[.02] p-3">
+   <p className="text-[10px] text-white/35">Peer-to-peer WebRTC audio • public STUN for development</p>
+   <div className="mt-3 flex gap-2">
+    <button onClick={joined?leave:join} className="flex-1 rounded-xl bg-violet-500 px-3 py-2.5 text-xs font-bold">{joined?"Leave voice":"Join voice"}</button>
+    <button disabled={!joined} onClick={toggleMute} className={"rounded-xl border border-white/10 p-2.5 disabled:opacity-25 "+(muted?"bg-red-400/10 text-red-200":"")} title="Mute microphone">{muted?<MicOff size={15}/>:<Mic size={15}/>}</button>
+    <button disabled={!joined} onClick={()=>setDeaf(v=>!v)} className={"rounded-xl border border-white/10 p-2.5 disabled:opacity-25 "+(deaf?"bg-red-400/10":"")} title="Deafen"><Headphones size={15}/></button>
+   </div>
+   <div className="mt-3 grid grid-cols-2 gap-2"><button disabled={!joined} onClick={()=>setPtt(v=>!v)} className={"rounded-lg border border-white/10 px-2.5 py-2 text-[10px] disabled:opacity-25 "+(ptt?"bg-cyan-400/10 text-cyan-200":"")}>{ptt?"Push-to-talk: V":"Normal microphone"}</button><label className="flex items-center gap-2 rounded-lg border border-white/10 px-2.5 py-2 text-[10px] text-white/35"><input type="checkbox" checked={low} onChange={e=>setLow(e.target.checked)}/>Low bandwidth</label></div>
   </div>
   {ptt&&joined&&<div className={"mt-3 rounded-xl border px-3 py-2 text-center text-[10px] "+(speaking?"border-emerald-400/20 bg-emerald-400/10 text-emerald-200":"border-white/10 text-white/30")}>{speaking?"Talking — release V to stop":"Hold V to talk"}</div>}
   {error&&<div className="mt-3 rounded-xl border border-red-400/15 bg-red-400/10 p-2.5 text-[10px] leading-4 text-red-200">{error}</div>}
-  <div className="mt-3 space-y-2">{joined&&Object.keys(audios.current).map(id=><div key={id} className="flex items-center gap-2 rounded-lg border border-white/[.05] px-2.5 py-2"><Volume2 size={12} className="text-white/25"/><span className="min-w-0 flex-1 truncate text-[10px] text-white/40">Participant {id.slice(0,6)}</span><input aria-label="Participant volume" type="range" min="0" max="100" value={volumes[id]??100} onChange={e=>setVolumes(v=>({...v,[id]:Number(e.target.value)}))} className="range w-20"/></div>)}</div>
-  <p className="mt-3 text-[10px] leading-4 text-white/20">Production voice should use a TURN server for users behind restrictive NAT/firewalls.</p>
+  {joined&&peerIds.length>0&&<div className="mt-3 space-y-2"><p className="text-[9px] font-bold uppercase tracking-[.15em] text-white/25">Participant volumes</p>{peerIds.map(id=><div key={id} className="flex items-center gap-2 rounded-lg border border-white/[.05] px-2.5 py-2"><Volume2 size={12} className="text-white/25"/><span className="min-w-0 flex-1 truncate text-[10px] text-white/40">User {id.slice(0,6)}</span><input aria-label="Participant volume" type="range" min="0" max="100" value={volumes[id]??100} onChange={e=>setVolumes(v=>({...v,[id]:Number(e.target.value)}))} className="range w-20"/></div>)}</div>}
+  {joined&&peerIds.length===0&&<p className="mt-3 text-[10px] text-white/25">No other voice participants yet.</p>}
+  <p className="mt-3 text-[10px] leading-4 text-white/20">For production voice, add a TURN server for restrictive NAT/firewall networks.</p>
  </section>
 }
 
