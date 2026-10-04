@@ -10,43 +10,99 @@ declare global{interface Window{YT:any;onYouTubeIframeAPIReady?:()=>void}}
 const fmt=(n:number)=>{const s=Math.max(0,Math.floor(n||0));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
 
 function App(){
- const[view,setView]=useState<"home"|"room">(location.pathname.startsWith("/room/")?"room":"home");
- const[room,setRoom]=useState<RoomState|null>(null),[chat,setChat]=useState<ChatMessage[]>([]);
- const[name,setName]=useState(""),[roomName,setRoomName]=useState("Friday Night"),[password,setPassword]=useState("");
- const[joinCode,setJoinCode]=useState(location.pathname.startsWith("/room/")?location.pathname.split("/").pop()?.toUpperCase()||"":"");
- const[joinPass,setJoinPass]=useState(""),[error,setError]=useState(""),[theme,setTheme]=useState<"dark"|"light">("dark"),[online,setOnline]=useState(false);
+ const [view,setView]=useState<"name"|"mode"|"create"|"join"|"solo"|"room">("name");
+ const [room,setRoom]=useState<RoomState|null>(null),[chat,setChat]=useState<ChatMessage[]>([]);
+ const [name,setName]=useState(()=>localStorage.getItem("syncbeat:name")||"");
+ const [roomName,setRoomName]=useState("Friday Night Mix"),[password,setPassword]=useState("");
+ const [joinCode,setJoinCode]=useState(()=>new URLSearchParams(location.search).get("room")?.toUpperCase()||"");
+ const [joinPass,setJoinPass]=useState(""),[error,setError]=useState(""),[theme,setTheme]=useState<"dark"|"light">("dark"),[online,setOnline]=useState(false);
+
  useEffect(()=>{document.documentElement.classList.toggle("light",theme==="light")},[theme]);
- useEffect(()=>{const c=()=>setOnline(true),d=()=>setOnline(false);socket.on("connect",c);socket.on("disconnect",d);return()=>{socket.off("connect",c);socket.off("disconnect",d)}},[]);
  useEffect(()=>{
-  const rs=(s:RoomState)=>{setRoom(s);setView("room");if(location.pathname!=="/room/"+s.code)history.replaceState({}, "", "/room/"+s.code)};
+  const c=()=>setOnline(true),d=()=>setOnline(false);
+  socket.on("connect",c);socket.on("disconnect",d);
+  return()=>{socket.off("connect",c);socket.off("disconnect",d)};
+ },[]);
+ useEffect(()=>{
+  const rs=(s:RoomState)=>{setRoom(s);setView("room");const q=new URLSearchParams();q.set("room",s.code);history.replaceState({}, "", location.pathname+"?"+q.toString())};
   const cm=(m:ChatMessage)=>setChat(x=>[...x,m].slice(-200));
   const cr=(x:any)=>setChat(c=>c.map(m=>m.id===x.id?{...m,reactions:x.reactions}:m));
-  const k=()=>{setRoom(null);setView("home");history.replaceState({},"","/");setError("You were removed from the room.")};
+  const k=()=>{setRoom(null);setView("mode");history.replaceState({},"",location.pathname);setError("You were removed from the room.")};
   socket.on("room:state",rs);socket.on("chat:message",cm);socket.on("chat:reaction",cr);socket.on("room:kicked",k);
   return()=>{socket.off("room:state",rs);socket.off("chat:message",cm);socket.off("chat:reaction",cr);socket.off("room:kicked",k)}
  },[]);
- const create=()=>{setError("");socket.connect();socket.emit("room:create",{name:roomName,userName:name,password:password||undefined},(r:any)=>r?.error?setError(r.error):(setRoom(r.state),setView("room"),history.replaceState({},"","/room/"+r.state.code)))};
- const join=()=>{setError("");socket.connect();socket.emit("room:join",{code:joinCode,userName:name,password:joinPass||undefined},(r:any)=>r?.error?setError(r.error):(setRoom(r.state),setChat(r.chat||[]),setView("room"),history.replaceState({},"","/room/"+r.state.code)))};
- if(view==="home"||!room)return <Home name={name} setName={setName} roomName={roomName} setRoomName={setRoomName} password={password} setPassword={setPassword} joinCode={joinCode} setJoinCode={setJoinCode} joinPass={joinPass} setJoinPass={setJoinPass} create={create} join={join} error={error} theme={theme} setTheme={setTheme} online={online}/>;
- return <Room room={room} chat={chat} theme={theme} setTheme={setTheme} onLeave={()=>{socket.disconnect();setRoom(null);setView("home");history.replaceState({},"","/")}}/>;
+
+ const saveName=()=>{const n=name.trim();if(!n)return;setName(n);localStorage.setItem("syncbeat:name",n);setError("");setView("mode")};
+ const create=()=>{setError("");socket.connect();socket.emit("room:create",{name:roomName,userName:name,password:password||undefined},(r:any)=>r?.error?setError(r.error):(setRoom(r.state),setChat([]),setView("room"),(()=>{const q=new URLSearchParams();q.set("room",r.state.code);history.replaceState({},"",location.pathname+"?"+q.toString())})()))};
+ const join=()=>{setError("");socket.connect();socket.emit("room:join",{code:joinCode,userName:name,password:joinPass||undefined},(r:any)=>r?.error?setError(r.error):(setRoom(r.state),setChat(r.chat||[]),setView("room"),(()=>{const q=new URLSearchParams();q.set("room",r.state.code);history.replaceState({},"",location.pathname+"?"+q.toString())})()))};
+ const goMode=()=>{setError("");setView("mode")};
+
+ if(view==="room"&&room)return <Room room={room} chat={chat} theme={theme} setTheme={setTheme} onLeave={()=>{socket.disconnect();setRoom(null);setView("mode");history.replaceState({},"",location.pathname)}}/>;
+ if(view==="solo")return <Solo name={name} theme={theme} setTheme={setTheme} onBack={goMode}/>;
+ return <Home step={view==="name"?"name":view} name={name} setName={setName} saveName={saveName} roomName={roomName} setRoomName={setRoomName} password={password} setPassword={setPassword} joinCode={joinCode} setJoinCode={setJoinCode} joinPass={joinPass} setJoinPass={setJoinPass} create={create} join={join} error={error} theme={theme} setTheme={setTheme} online={online} onMode={setView}/>;
 }
 
 function Home(p:any){
- const[tab,setTab]=useState<"create"|"join">("create");
+ const invited=Boolean(p.joinCode);
+ const isName=p.step==="name", isCreate=p.step==="create", isJoin=p.step==="join";
  return <div className="min-h-screen gradient-bg"><div className="noise"/>
- <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-6"><Logo/><div className="flex items-center gap-3"><span className="hidden text-xs text-white/40 sm:block">{p.online?"Connected":"Ready to connect"}</span><button onClick={()=>p.setTheme(p.theme==="dark"?"light":"dark")} className="glass rounded-full p-2">{p.theme==="dark"?<Sun size={17}/>:<Moon size={17}/>}</button></div></header>
- <main className="mx-auto grid max-w-6xl gap-10 px-5 pb-16 pt-10 lg:grid-cols-[1.1fr_.9fr] lg:items-center">
-  <section><div className="mb-5 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1.5 text-xs font-semibold text-violet-200"><Radio size={13}/> Private real-time listening rooms</div><h1 className="text-5xl font-extrabold tracking-tight sm:text-7xl">Your music.<br/><span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-cyan-300 bg-clip-text text-transparent">Your people.</span></h1><p className="mt-6 max-w-xl text-base leading-7 text-white/55 sm:text-lg">SyncBeat brings synchronized YouTube playback, queue, room chat and WebRTC voice into one private space.</p><div className="mt-8 flex flex-wrap gap-2 text-xs text-white/45"><span className="glass rounded-full px-3 py-2">Official YouTube embeds</span><span className="glass rounded-full px-3 py-2">WebRTC voice</span><span className="glass rounded-full px-3 py-2">No audio downloads</span></div></section>
-  <section className="glass glow rounded-[28px] p-2"><div className="rounded-[22px] bg-black/20 p-6 sm:p-8"><div className="mb-6 flex rounded-xl bg-white/[.04] p-1"><button onClick={()=>setTab("create")} className={"flex-1 rounded-lg px-4 py-3 text-sm font-semibold "+(tab==="create"?"bg-white text-black":"text-white/50")}>Create room</button><button onClick={()=>setTab("join")} className={"flex-1 rounded-lg px-4 py-3 text-sm font-semibold "+(tab==="join"?"bg-white text-black":"text-white/50")}>Join room</button></div>
-   {p.error&&<div className="mb-4 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200">{p.error}</div>}
-   <Field label="Your name"><input value={p.name} onChange={e=>p.setName(e.target.value)} placeholder="e.g. Abhi" className="input"/></Field>
-   {tab==="create"?<><Field label="Room name"><input value={p.roomName} onChange={e=>p.setRoomName(e.target.value)} className="input"/></Field><Field label="Password (optional)"><input type="password" value={p.password} onChange={e=>p.setPassword(e.target.value)} className="input"/></Field><button disabled={!p.name.trim()} onClick={p.create} className="action">Create private room <Plus size={16}/></button></>:<><Field label="Room code"><input value={p.joinCode} maxLength={6} onChange={e=>p.setJoinCode(e.target.value.toUpperCase())} placeholder="ABC123" className="input font-mono tracking-[.25em]"/></Field><Field label="Password (if required)"><input type="password" value={p.joinPass} onChange={e=>p.setJoinPass(e.target.value)} className="input"/></Field><button disabled={!p.name.trim()||p.joinCode.length!==6} onClick={p.join} className="action">Join room <LogIn size={16}/></button></>}
-  </div></section>
- </main></div>
+  <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-6"><button onClick={()=>p.step!=="name"&&p.onMode("mode")} className="rounded-xl"><Logo/></button><div className="flex items-center gap-3">{!isName&&<span className="hidden text-xs text-white/40 sm:block">{p.online?"Connected":"Ready to connect"}</span>}<button aria-label="Toggle theme" onClick={()=>p.setTheme(p.theme==="dark"?"light":"dark")} className="glass rounded-full p-2">{p.theme==="dark"?<Sun size={17}/>:<Moon size={17}/>}</button></div></header>
+  <main className="mx-auto max-w-6xl px-5 pb-16 pt-8">
+   {isName?<section className="mx-auto max-w-xl pt-10 text-center sm:pt-16">
+    <div className="mx-auto mb-7 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-violet-400 to-cyan-300 text-black shadow-2xl"><Music2 size={28}/></div>
+    <p className="text-xs font-bold uppercase tracking-[.25em] text-violet-300/70">Welcome to SyncBeat</p>
+    <h1 className="mt-4 text-5xl font-extrabold tracking-tight sm:text-6xl">What should we<br/><span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-cyan-300 bg-clip-text text-transparent">call you?</span></h1>
+    <p className="mx-auto mt-5 max-w-md text-sm leading-6 text-white/45">Enter your name once. Then choose how you want to listen.</p>
+    <div className="glass glow mx-auto mt-8 rounded-[28px] p-6 text-left sm:p-8">
+      {p.error&&<div className="mb-4 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200">{p.error}</div>}
+      <Field label="Your name"><input autoFocus value={p.name} onChange={e=>p.setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&p.saveName()} placeholder="e.g. Abhi" maxLength={32} className="input"/></Field>
+      <button disabled={!p.name.trim()} onClick={p.saveName} className="action">Enter SyncBeat <LogIn size={17}/></button>
+    </div>
+   </section>:<section>
+    <div className="mb-8 text-center"><div className="mb-3 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1.5 text-xs font-semibold text-violet-200"><Radio size={13}/> {invited?"You have a room invite":"You're in"}</div>
+     <h1 className="text-4xl font-extrabold tracking-tight sm:text-6xl">Hey, {p.name} 👋</h1>
+     <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-white/45">How do you want to listen today?</p>
+    </div>
+    {p.error&&<div className="mx-auto mb-5 max-w-4xl rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200">{p.error}</div>}
+    {isCreate?<div className="mx-auto max-w-xl glass glow rounded-[28px] p-6 sm:p-8">
+      <button onClick={()=>p.onMode("mode")} className="mb-5 inline-flex items-center gap-2 text-xs text-white/40 hover:text-white/70">← Back to listening modes</button>
+      <h2 className="text-2xl font-bold">Create a private room</h2><p className="mt-1 text-xs text-white/35">You become the host and control shared playback.</p>
+      <div className="mt-6"><Field label="Room name"><input autoFocus value={p.roomName} onChange={e=>p.setRoomName(e.target.value)} maxLength={60} className="input"/></Field><Field label="Password (optional)"><input type="password" value={p.password} onChange={e=>p.setPassword(e.target.value)} maxLength={100} className="input"/></Field><button disabled={!p.roomName.trim()} onClick={p.create} className="action">Create room <Plus size={17}/></button></div>
+    </div>:isJoin?<div className="mx-auto max-w-xl glass glow rounded-[28px] p-6 sm:p-8">
+      <button onClick={()=>p.onMode("mode")} className="mb-5 inline-flex items-center gap-2 text-xs text-white/40 hover:text-white/70">← Back to listening modes</button>
+      <h2 className="text-2xl font-bold">Join a friend's room</h2><p className="mt-1 text-xs text-white/35">{invited?"The invite code is ready below.":"Enter the 6-character room code."}</p>
+      <div className="mt-6"><Field label="Room code"><input autoFocus value={p.joinCode} maxLength={6} onChange={e=>p.setJoinCode(e.target.value.replace(/[^A-Za-z0-9]/g,"").toUpperCase())} placeholder="ABC123" className="input font-mono tracking-[.28em]"/></Field><Field label="Password (if required)"><input type="password" value={p.joinPass} onChange={e=>p.setJoinPass(e.target.value)} className="input"/></Field><button disabled={p.joinCode.length!==6} onClick={p.join} className="action">Join room <LogIn size={17}/></button></div>
+    </div>:<div className="mx-auto grid max-w-5xl gap-4 md:grid-cols-3">
+      <ModeCard icon={<Headphones size={24}/>} label="Listen solo" title="Just me" text="Play YouTube videos privately with a clean player and no room setup." onClick={()=>p.onMode("solo")}/>
+      <ModeCard featured icon={<Users size={24}/>} label="With friends" title="Create a room" text="Start a private room, invite friends, sync music, chat and use voice." onClick={()=>p.onMode("create")}/>
+      <ModeCard icon={<LogIn size={24}/>} label="Have a code?" title="Join a room" text="Enter your friend's 6-character code and jump straight in." onClick={()=>p.onMode("join")}/>
+    </div>}
+    <div className="mx-auto mt-8 flex max-w-4xl flex-wrap justify-center gap-2 text-[11px] text-white/30"><span className="glass rounded-full px-3 py-2">Official YouTube embeds</span><span className="glass rounded-full px-3 py-2">WebRTC voice</span><span className="glass rounded-full px-3 py-2">Private room codes</span></div>
+   </section>}
+  </main>
+ </div>
+}
+function ModeCard({icon,label,title,text,onClick,featured=false}:{icon:React.ReactNode;label:string;title:string;text:string;onClick:()=>void;featured?:boolean}){
+ return <button onClick={onClick} className={"group text-left glass rounded-[26px] p-6 transition duration-300 hover:-translate-y-1 hover:border-violet-300/30 hover:bg-white/[.05] "+(featured?"glow border-violet-300/20":"")}>
+  <div className="flex items-center justify-between"><div className={"grid h-12 w-12 place-items-center rounded-2xl "+(featured?"bg-violet-400/15 text-violet-200":"bg-white/[.06] text-white/70")}>{icon}</div><span className="text-[10px] font-semibold uppercase tracking-[.2em] text-white/25">{label}</span></div>
+  <h2 className="mt-8 text-xl font-bold">{title}</h2><p className="mt-2 min-h-[48px] text-sm leading-6 text-white/40">{text}</p><span className="mt-6 inline-flex items-center gap-2 text-xs font-semibold text-white/65 transition group-hover:gap-3">Continue <span>→</span></span>
+ </button>
 }
 function Field({label,children}:{label:string;children:React.ReactNode}){return <label className="mb-4 block"><span className="mb-2 block text-xs font-semibold text-white/45">{label}</span>{children}</label>}
 function Logo(){return <div className="flex items-center gap-2.5"><div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-violet-400 to-cyan-300 text-black"><Music2 size={19}/></div><span className="text-lg font-extrabold">SyncBeat</span></div>}
 
+function Solo({name,theme,setTheme,onBack}:{name:string;theme:"dark"|"light";setTheme:any;onBack:()=>void}){
+ const mount=useRef<HTMLDivElement>(null),yt=useRef<any>(null),[url,setUrl]=useState(""),[videoId,setVideoId]=useState(""),[ready,setReady]=useState(false),[playing,setPlaying]=useState(false),[pos,setPos]=useState(0),[dur,setDur]=useState(0),[vol,setVol]=useState(70),[error,setError]=useState("");
+ useEffect(()=>{const init=()=>{if(!mount.current||!videoId)return;setReady(false);yt.current?.destroy?.();yt.current=new window.YT.Player(mount.current,{videoId,playerVars:{playsinline:1,controls:0,rel:0},events:{onReady:(e:any)=>{setReady(true);setDur(e.target.getDuration());e.target.setVolume(vol)},onStateChange:(e:any)=>{setPlaying(e.data===1);if(e.data===0)setPlaying(false);if(e.data===-1)setError("This video cannot be embedded or is unavailable. Try another YouTube video.")}}})};if((window as any).YT?.Player)init();else window.onYouTubeIframeAPIReady=init;const t=setInterval(()=>{if(yt.current?.getCurrentTime){setPos(yt.current.getCurrentTime());setDur(yt.current.getDuration?.()||0)}},500);return()=>{clearInterval(t);yt.current?.destroy?.();yt.current=null}},[videoId]);
+ const load=()=>{const id=extractYouTubeId(url);if(!id){setError("Paste a valid YouTube URL or 11-character video ID.");return}setError("");setVideoId(id)};
+ return <div className="min-h-screen gradient-bg"><div className="noise"/><header className="sticky top-0 z-20 border-b border-white/[.06] bg-[#07080c]/80 backdrop-blur-xl"><div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3"><button onClick={onBack}><Logo/></button><div className="flex items-center gap-2"><span className="hidden text-xs text-white/35 sm:block">Listening solo • {name}</span><button onClick={()=>setTheme(theme==="dark"?"light":"dark")} className="rounded-lg border border-white/10 p-2">{theme==="dark"?<Sun size={16}/>:<Moon size={16}/>}</button></div></div></header>
+  <main className="mx-auto max-w-5xl p-4 sm:p-6"><div className="mb-5"><button onClick={onBack} className="text-xs text-white/35 hover:text-white/60">← Listening modes</button><h1 className="mt-3 text-3xl font-extrabold">Listen solo</h1><p className="mt-1 text-sm text-white/35">Paste a YouTube link. SyncBeat uses the official YouTube player.</p></div>
+   <div className="glass rounded-2xl p-3 sm:p-4"><div className="flex flex-col gap-2 sm:flex-row"><input value={url} onChange={e=>setUrl(e.target.value)} onKeyDown={e=>e.key==="Enter"&&load()} placeholder="https://youtube.com/watch?v=..." className="input flex-1"/><button onClick={load} className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black">Load video</button></div>{error&&<div className="mt-3 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-xs text-red-200">{error}</div>}</div>
+   <div className="glass mt-4 overflow-hidden rounded-2xl"><div className="relative"><div ref={mount} className="yt-frame"/>{!videoId&&<div className="absolute inset-0 grid place-items-center bg-[#090a0f]/70 p-6 text-center"><div><div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white/[.05] text-white/50"><Music2/></div><p className="mt-3 text-sm text-white/50">Your video will appear here.</p></div></div>}{videoId&&!ready&&!error&&<div className="absolute inset-0 grid place-items-center bg-[#090a0f]/70"><Loader2 className="animate-spin text-white/50"/></div>}</div>
+    <div className="p-4"><div className="flex items-center justify-between"><div className="text-xs text-white/35">{playing?"Playing":"Paused"}{videoId?" • "+videoId:""}</div><button disabled={!ready} onClick={()=>{if(playing)yt.current?.pauseVideo?.();else yt.current?.playVideo?.()}} className="grid h-10 w-10 place-items-center rounded-full bg-white text-black disabled:opacity-30">{playing?<Pause size={17}/>:<Play size={17} fill="currentColor"/>}</button></div><input disabled={!ready} type="range" min="0" max={dur||1} value={Math.min(pos,dur||1)} onChange={e=>{const v=Number(e.target.value);setPos(v);yt.current?.seekTo?.(v,true)}} className="range mt-3 w-full"/><div className="flex justify-between text-[11px] text-white/30"><span>{fmt(pos)}</span><span>{fmt(dur)}</span></div><div className="mt-3 flex items-center gap-3"><button onClick={()=>{const v=vol?0:70;setVol(v);yt.current?.setVolume?.(v)}}>{vol?<Volume2 size={17}/>:<VolumeX size={17}/>}</button><input aria-label="Volume" type="range" min="0" max="100" value={vol} onChange={e=>{const v=Number(e.target.value);setVol(v);yt.current?.setVolume?.(v)}} className="range w-28"/><button onClick={()=>yt.current?.getIframe?.()?.requestFullscreen?.()} className="ml-auto"><Maximize2 size={16}/></button></div></div>
+   </div>
+  </main></div>
+}
 function Room({room,chat,theme,setTheme,onLeave}:{room:RoomState;chat:ChatMessage[];theme:string;setTheme:any;onLeave:()=>void}){
  const[tab,setTab]=useState<"chat"|"people">("chat"),[add,setAdd]=useState(""),[notice,setNotice]=useState(""),[typing,setTyping]=useState(false),[low,setLow]=useState(false);
  const host=room.hostId===socket.id;
